@@ -1,0 +1,29 @@
+<svg width="200" height="200" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- ASTRA MINDCORE brain mark - primary (orange on transparent) -->
+  <g fill="none" stroke="#FF4F00" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round">
+    <!-- left hemisphere -->
+    <path d="M 50 22
+             C 45 15, 36 14, 30 18
+             C 24 22, 22 28, 24 33
+             C 18 35, 15 40, 16 46
+             C 17 51, 21 54, 25 55
+             C 21 58, 19 63, 21 68
+             C 23 74, 29 77, 35 76
+             C 37 81, 42 84, 48 84
+             L 50 84
+             L 50 22 Z"/>
+    <!-- right hemisphere (mirrored) -->
+    <path d="M 50 22
+             C 55 15, 64 14, 70 18
+             C 76 22, 78 28, 76 33
+             C 82 35, 85 40, 84 46
+             C 83 51, 79 54, 75 55
+             C 79 58, 81 63, 79 68
+             C 77 74, 71 77, 65 76
+             C 63 81, 58 84, 52 84
+             L 50 84
+             L 50 22 Z"/>
+    <!-- center divider -->
+    <line x1="50" y1="23" x2="50" y2="83"/>
+  </g>
+</svg>
