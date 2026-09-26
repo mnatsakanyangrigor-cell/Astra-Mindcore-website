@@ -448,6 +448,7 @@
 
   /* dashboard */
   .dash-sec{padding:20px 0 80px}
+  #biometrics{scroll-margin-top:88px}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
   .dash2{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px}
   .dash2-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px}
@@ -493,16 +494,35 @@
   .dbar-top b{color:var(--white);font-family:"JetBrains Mono";font-weight:600}
   .track{height:6px;border-radius:4px;background:var(--card3);overflow:hidden}
   .track .fill{display:block;height:100%;width:0%;border-radius:4px;transition:width 1.1s cubic-bezier(.4,0,.2,1)}
+  .track.dperf-track{display:flex;height:8px}
+  .track.dperf-track .fill{flex:none;border-radius:0;transition:width 1.1s cubic-bezier(.4,0,.2,1)}
+  .track.dperf-track .fill:first-child{border-radius:4px 0 0 4px}
+  .track.dperf-track .fill:last-child{border-radius:0 4px 4px 0}
+  .track.dperf-track .fill:only-child{border-radius:4px}
   .fill.perf{background:var(--orange)}
   .fill.focus{background:var(--green)}
   .fill.stress{background:#f2c14e}
   .fill.easy{background:var(--green)}
   .fill.medium{background:var(--orange)}
   .fill.hard{background:#ff5577}
-  .dperf-row{margin-bottom:14px}
+  .fill.ok{background:#22c55e}
+  .fill.bad{background:#ef4444}
+  .dperf-row{margin-bottom:16px}
   .dperf-row:last-child{margin-bottom:0}
   .dperf-top{display:flex;justify-content:space-between;font-size:.86rem;color:var(--white);margin-bottom:7px}
-  .dperf-top b{font-family:"JetBrains Mono"}
+  .dperf-top b,.dperf-total{font-family:"JetBrains Mono";font-variant-numeric:tabular-nums}
+  .dperf-pct{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:.68rem;font-weight:600;font-family:"JetBrains Mono";letter-spacing:.02em}
+  .dperf-pct .ok{color:#22c55e}
+  .dperf-pct .bad{color:#ef4444}
+  .dperf-pct .ok::before,
+  .dperf-pct .bad::before{
+    content:"";
+    display:inline-block;
+    width:7px;height:7px;border-radius:50%;
+    margin-right:6px;vertical-align:middle;
+  }
+  .dperf-pct .ok::before{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.55)}
+  .dperf-pct .bad::before{background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.55)}
   .easy-txt{color:var(--green)}
   .medium-txt{color:var(--orange)}
   .hard-txt{color:#ff5577}

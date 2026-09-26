@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'CLR', '0', 'ENT'] as const
 const STAGE_SECS = 30
@@ -9,6 +8,7 @@ const CONNECTED_MS = 3000
 
 type Phase = 'idle' | 'connecting' | 'connected' | 'playing' | 'rest' | 'done'
 type Difficulty = 'easy' | 'medium' | 'hard'
+type StageScores = Record<Difficulty, number>
 
 const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard']
 const DIFF_LABEL: Record<Difficulty, string> = {
@@ -21,6 +21,8 @@ const DIFF_DIGITS: Record<Difficulty, number> = {
   medium: 2,
   hard: 3,
 }
+
+const emptyScores = (): StageScores => ({ easy: 0, medium: 0, hard: 0 })
 
 /** Key face bounds measured from device-front-cutout.png (631×872). */
 const COLS = [
@@ -81,18 +83,49 @@ function mapKeyboardEvent(e: KeyboardEvent): PadKey | null {
   return null
 }
 
+function publishPerformance(correct: StageScores, attempted: StageScores, animate = true) {
+  for (const diff of DIFFICULTIES) {
+    const ok = correct[diff]
+    const total = attempted[diff]
+    const okPct = total > 0 ? Math.round((ok / total) * 100) : 0
+    const badPct = total > 0 ? 100 - okPct : 0
+
+    const totalEl = document.getElementById(`perf-${diff}-total`)
+    const okBar = document.getElementById(`perf-${diff}-ok`) as HTMLElement | null
+    const badBar = document.getElementById(`perf-${diff}-bad`) as HTMLElement | null
+    const okPctEl = document.getElementById(`perf-${diff}-ok-pct`)
+    const badPctEl = document.getElementById(`perf-${diff}-bad-pct`)
+
+    if (totalEl) totalEl.textContent = String(total)
+    if (okPctEl) okPctEl.textContent = `${okPct}% correct`
+    if (badPctEl) badPctEl.textContent = `${badPct}% incorrect`
+
+    if (okBar && badBar) {
+      if (animate) {
+        okBar.style.width = '0%'
+        badBar.style.width = '0%'
+        // Force layout so the width transition runs once.
+        void okBar.offsetWidth
+      }
+      okBar.style.width = `${okPct}%`
+      badBar.style.width = `${badPct}%`
+    }
+  }
+
+  const dash = document.getElementById('liveDash')
+  if (dash) dash.dataset.sessionDone = '1'
+  window.dispatchEvent(new CustomEvent('astra:session-done'))
+}
+
 export function Calculator() {
   const [question, setQuestion] = useState(() => makeQuestion('easy'))
   const [input, setInput] = useState('')
   const [feedback, setFeedback] = useState<'ok' | 'bad' | null>(null)
-  const [correct, setCorrect] = useState(0)
-  const [incorrect, setIncorrect] = useState(0)
   const [secondsLeft, setSecondsLeft] = useState(STAGE_SECS)
   const [phase, setPhase] = useState<Phase>('idle')
   const [difficulty, setDifficulty] = useState<Difficulty>('easy')
   const [connectedLeft, setConnectedLeft] = useState(3)
   const [bio, setBio] = useState<Bio>(() => ({ hr: 0, spo2: 0, gsr: 0 }))
-  const [showResults, setShowResults] = useState(false)
   const [pressed, setPressed] = useState<PadKey | null>(null)
   const [qEnter, setQEnter] = useState(false)
   const nextTimer = useRef<number | null>(null)
@@ -100,6 +133,8 @@ export function Calculator() {
   const connectTimer = useRef<number | null>(null)
   const qEnterTimer = useRef<number | null>(null)
   const difficultyRef = useRef<Difficulty>('easy')
+  const stageCorrectRef = useRef<StageScores>(emptyScores())
+  const stageAttemptedRef = useRef<StageScores>(emptyScores())
 
   difficultyRef.current = difficulty
 
@@ -165,6 +200,14 @@ export function Calculator() {
     [clearNextTimer, triggerQEnter],
   )
 
+  const finishSession = useCallback(() => {
+    clearNextTimer()
+    setPhase('done')
+    setInput('')
+    setFeedback(null)
+    publishPerformance(stageCorrectRef.current, stageAttemptedRef.current, true)
+  }, [clearNextTimer])
+
   const beginRunning = useCallback(() => {
     startStage('easy')
     setConnectedLeft(3)
@@ -180,18 +223,20 @@ export function Calculator() {
   const startSession = useCallback(() => {
     clearNextTimer()
     clearConnectTimer()
+    stageCorrectRef.current = emptyScores()
+    stageAttemptedRef.current = emptyScores()
+    const dash = document.getElementById('liveDash')
+    if (dash) delete dash.dataset.sessionDone
+    publishPerformance(emptyScores(), emptyScores(), false)
     setQuestion(makeQuestion('easy'))
     setInput('')
     setFeedback(null)
-    setCorrect(0)
-    setIncorrect(0)
     setSecondsLeft(STAGE_SECS)
     setDifficulty('easy')
     difficultyRef.current = 'easy'
     setPhase('connecting')
     setConnectedLeft(3)
     setBio({ hr: 0, spo2: 0, gsr: 0 })
-    setShowResults(false)
     setPressed(null)
     setQEnter(false)
     connectTimer.current = window.setTimeout(showConnected, CONNECT_MS)
@@ -207,7 +252,6 @@ export function Calculator() {
     next()
   }, [phase, difficulty, feedback, clearNextTimer, next, startStage])
 
-  const playAgain = startSession
   const booting = phase === 'connecting' || phase === 'connected'
   const playing = phase === 'playing'
   const resting = phase === 'rest'
@@ -229,18 +273,25 @@ export function Calculator() {
       if (idx >= 0 && idx < DIFFICULTIES.length - 1) {
         startRest(DIFFICULTIES[idx + 1]!)
       } else {
-        clearNextTimer()
-        setPhase('done')
-        setShowResults(true)
-        setInput('')
-        setFeedback(null)
+        finishSession()
       }
       return
     }
     if (phase === 'rest') {
       startStage(difficulty)
     }
-  }, [secondsLeft, phase, difficulty, startRest, startStage, clearNextTimer])
+  }, [secondsLeft, phase, difficulty, startRest, startStage, finishSession])
+
+  useEffect(() => {
+    if (phase !== 'done') return
+    const target =
+      document.getElementById('biometrics') ?? document.getElementById('liveDash')
+    if (!target) return
+    const id = window.setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+    return () => window.clearTimeout(id)
+  }, [phase])
 
   useEffect(() => {
     if (phase !== 'connected' && phase !== 'playing' && phase !== 'rest') return
@@ -279,9 +330,18 @@ export function Calculator() {
 
       if (label === 'ENT') {
         if (!input) return
+        const diff = difficultyRef.current
         const ok = Number(input) === question.answer
-        if (ok) setCorrect((c) => c + 1)
-        else setIncorrect((c) => c + 1)
+        stageAttemptedRef.current = {
+          ...stageAttemptedRef.current,
+          [diff]: stageAttemptedRef.current[diff] + 1,
+        }
+        if (ok) {
+          stageCorrectRef.current = {
+            ...stageCorrectRef.current,
+            [diff]: stageCorrectRef.current[diff] + 1,
+          }
+        }
         setFeedback(ok ? 'ok' : 'bad')
         clearNextTimer()
         nextTimer.current = window.setTimeout(next, ok ? 200 : 2000)
@@ -296,13 +356,6 @@ export function Calculator() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (showResults) {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          setShowResults(false)
-        }
-        return
-      }
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
@@ -315,7 +368,7 @@ export function Calculator() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onKey, showResults])
+  }, [onKey])
 
   const displayClass =
     feedback === 'ok' ? 'mc-display ok' : feedback === 'bad' ? 'mc-display bad' : 'mc-display'
@@ -338,7 +391,7 @@ export function Calculator() {
     screenLabel = `${question.a} ${question.op} ${question.b}`
   } else if (resting) {
     screenLabel = `Rest · ${DIFF_LABEL[difficulty]}`
-  } else if (phase === 'done' || showResults) {
+  } else if (phase === 'done') {
     screenLabel = 'TIME UP'
   } else {
     screenLabel = 'Ready'
@@ -354,7 +407,6 @@ export function Calculator() {
           <div className="mc-top">
             <div className="mc-stats" aria-live="polite">
               <span className="mc-timer">{formatTime(secondsLeft)}</span>
-              {(playing || resting) && <span className="mc-diff">{DIFF_LABEL[difficulty]}</span>}
             </div>
             <div className="mc-bio" aria-label="Biometrics">
               <span className="mc-bio-item hr">
@@ -474,35 +526,6 @@ export function Calculator() {
           )
         })}
       </div>
-
-      {showResults &&
-        createPortal(
-          <div
-            className="mc-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="mc-results-title"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowResults(false)
-            }}
-          >
-            <div className="mc-modal-card">
-              <h3 id="mc-results-title">Session complete</h3>
-              <p className="mc-modal-ok">Correct: {correct}</p>
-              <p className="mc-modal-bad">Incorrect: {incorrect}</p>
-              <p className="mc-modal-total">Total answered: {correct + incorrect}</p>
-              <div className="mc-modal-actions">
-                <button type="button" className="btn btn-primary" onClick={playAgain}>
-                  Play again
-                </button>
-                <button type="button" className="btn btn-ghost" onClick={() => setShowResults(false)}>
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
     </div>
   )
 }

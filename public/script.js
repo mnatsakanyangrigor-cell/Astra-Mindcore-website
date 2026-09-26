@@ -32,7 +32,7 @@
   const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.15});
   document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 
-  // live dashboard demo — animates connect -> biometrics -> readiness -> performance -> AI analysis, then loops
+  // live dashboard demo — animates once on first view (stops after session results)
   (function(){
     const root=document.getElementById('liveDash');
     if(!root)return;
@@ -84,8 +84,9 @@
       alertsEl.appendChild(d);
     }
     function resetDash(){
+      if(root.dataset.sessionDone==='1')return;
       nums.forEach(n=>{const dec=n.dataset.decimals?+n.dataset.decimals:0;n.textContent=dec?(0).toFixed(dec):'0';});
-      root.querySelectorAll('.fill').forEach(f=>f.style.width='0%');
+      root.querySelectorAll('.dready-bars .fill,.dbio .fill').forEach(f=>f.style.width='0%');
       ring.style.strokeDashoffset=CIRC;
       readyPct.textContent='0%';
       statusEl.classList.remove('active');statusEl.classList.add('waiting');
@@ -96,7 +97,7 @@
     }
     function setFinalState(){
       nums.forEach(n=>{const dec=n.dataset.decimals?+n.dataset.decimals:0;n.textContent=dec?(+n.dataset.target).toFixed(dec):n.dataset.target;});
-      root.querySelectorAll('.fill').forEach(f=>f.style.width=f.dataset.target+'%');
+      root.querySelectorAll('.dready-bars .fill').forEach(f=>f.style.width=f.dataset.target+'%');
       ring.style.strokeDashoffset=CIRC*(1-.72);
       readyPct.textContent='72%';
       statusEl.classList.remove('waiting');statusEl.classList.add('active');
@@ -109,46 +110,41 @@
 
     if(reduce){ setFinalState(); return; }
 
-    let stopped=true, running=false;
+    let stopped=true, running=false, playedOnce=false;
     async function sequence(){
-      if(running)return;
+      if(running||playedOnce||root.dataset.sessionDone==='1')return;
       running=true;
-      while(!stopped){
-        resetDash();
-        await sleep(900); if(stopped)break;
+      resetDash();
+      await sleep(900); if(stopped||root.dataset.sessionDone==='1'){running=false;return;}
 
-        statusEl.classList.remove('waiting');statusEl.classList.add('active');
-        statusEl.innerHTML='<span class="sdot"></span>Active';
-        root.querySelectorAll('.dbio .num').forEach(n=>{
-          const dec=n.dataset.decimals?+n.dataset.decimals:0;
-          animateNum(n,+n.dataset.target,dec);
-        });
-        addAlert(...ALERTS[0]);
-        await sleep(650); if(stopped)break;
+      statusEl.classList.remove('waiting');statusEl.classList.add('active');
+      statusEl.innerHTML='<span class="sdot"></span>Active';
+      root.querySelectorAll('.dbio .num').forEach(n=>{
+        const dec=n.dataset.decimals?+n.dataset.decimals:0;
+        animateNum(n,+n.dataset.target,dec);
+      });
+      addAlert(...ALERTS[0]);
+      await sleep(650); if(stopped||root.dataset.sessionDone==='1'){running=false;return;}
 
-        addAlert(...ALERTS[1]);
-        await sleep(900); if(stopped)break;
+      addAlert(...ALERTS[1]);
+      await sleep(900); if(stopped||root.dataset.sessionDone==='1'){running=false;return;}
 
-        ring.style.strokeDashoffset=CIRC*(1-.72);
-        animateRingPct(72,1200);
-        root.querySelectorAll('.dready-bars .fill').forEach(f=>f.style.width=f.dataset.target+'%');
-        root.querySelectorAll('.dready-bars .num').forEach(n=>animateNum(n,+n.dataset.target,0,1100));
-        await sleep(650); if(stopped)break;
+      ring.style.strokeDashoffset=CIRC*(1-.72);
+      animateRingPct(72,1200);
+      root.querySelectorAll('.dready-bars .fill').forEach(f=>f.style.width=f.dataset.target+'%');
+      root.querySelectorAll('.dready-bars .num').forEach(n=>animateNum(n,+n.dataset.target,0,1100));
+      await sleep(650); if(stopped||root.dataset.sessionDone==='1'){running=false;return;}
 
-        addAlert(...ALERTS[2]);
-        await sleep(900); if(stopped)break;
+      addAlert(...ALERTS[2]);
+      await sleep(900); if(stopped||root.dataset.sessionDone==='1'){running=false;return;}
 
-        root.querySelectorAll('.dgrid2 .fill').forEach(f=>f.style.width=f.dataset.target+'%');
-        root.querySelectorAll('.dperf-row .num').forEach(n=>animateNum(n,+n.dataset.target,0,1000));
-        await sleep(700); if(stopped)break;
+      // Performance bars are driven by the live session — skip fake demo scores.
+      addAlert(...ALERTS[3]);
+      await sleep(900); if(stopped||root.dataset.sessionDone==='1'){running=false;return;}
 
-        addAlert(...ALERTS[3]);
-        await sleep(900); if(stopped)break;
-
-        aiEl.classList.add('ready');
-        aiEl.textContent=AI_TEXT;
-        await sleep(5500);
-      }
+      aiEl.classList.add('ready');
+      aiEl.textContent=AI_TEXT;
+      playedOnce=true;
       running=false;
     }
 
@@ -157,6 +153,15 @@
       else{stopped=true;}
     }),{threshold:.25});
     dashObs.observe(root);
+
+    addEventListener('astra:session-done',()=>{
+      stopped=true;
+      playedOnce=true;
+      statusEl.classList.remove('waiting');statusEl.classList.add('active');
+      statusEl.innerHTML='<span class="sdot"></span>Active';
+      aiEl.classList.add('ready');
+      aiEl.textContent=AI_TEXT;
+    });
   })();
 
   // app phone mockup — cycles through Calibration -> Connect Wearable -> Protocol screens

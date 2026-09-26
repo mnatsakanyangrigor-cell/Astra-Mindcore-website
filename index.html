@@ -80,7 +80,7 @@
           <div class="drow"><span>Status</span><b class="status waiting" id="dStatus"><span class="sdot"></span>Waiting</b></div>
         </div>
 
-        <div class="dcard">
+        <div class="dcard" id="biometrics">
           <div class="dcard-head">Biometrics</div>
           <div class="dbio-grid">
             <div class="dbio hr"><div class="dash-line"></div><div class="dbio-label">Heart Rate</div><div class="dbio-val"><span class="num" data-target="72">72</span><span> bpm</span></div><div class="dbio-range"><span class="rdot"></span>Normal (60-100)</div></div>
@@ -109,9 +109,21 @@
       <div class="dgrid2">
         <div class="dcard">
           <div class="dcard-head-row"><div class="dcard-head" style="margin-bottom:0">Performance</div><div class="dtabs"><button class="dtab active" type="button">Current</button><button class="dtab" type="button">Average</button><button class="dtab" type="button">Graph</button></div></div>
-          <div class="dperf-row"><div class="dperf-top"><span class="easy-txt">Easy</span><b><span class="num" data-target="21">0</span></b></div><div class="track"><div class="fill easy" data-target="90"></div></div></div>
-          <div class="dperf-row"><div class="dperf-top"><span class="medium-txt">Medium</span><b><span class="num" data-target="14">0</span></b></div><div class="track"><div class="fill medium" data-target="60"></div></div></div>
-          <div class="dperf-row"><div class="dperf-top"><span class="hard-txt">Hard</span><b><span class="num" data-target="10">0</span></b></div><div class="track"><div class="fill hard" data-target="42"></div></div></div>
+          <div class="dperf-row" data-diff="easy">
+            <div class="dperf-top"><span class="easy-txt">Easy</span><b class="dperf-total"><span id="perf-easy-total">0</span></b></div>
+            <div class="track dperf-track"><div class="fill ok" id="perf-easy-ok"></div><div class="fill bad" id="perf-easy-bad"></div></div>
+            <div class="dperf-pct"><span class="ok" id="perf-easy-ok-pct">0% correct</span><span class="bad" id="perf-easy-bad-pct">0% incorrect</span></div>
+          </div>
+          <div class="dperf-row" data-diff="medium">
+            <div class="dperf-top"><span class="medium-txt">Medium</span><b class="dperf-total"><span id="perf-medium-total">0</span></b></div>
+            <div class="track dperf-track"><div class="fill ok" id="perf-medium-ok"></div><div class="fill bad" id="perf-medium-bad"></div></div>
+            <div class="dperf-pct"><span class="ok" id="perf-medium-ok-pct">0% correct</span><span class="bad" id="perf-medium-bad-pct">0% incorrect</span></div>
+          </div>
+          <div class="dperf-row" data-diff="hard">
+            <div class="dperf-top"><span class="hard-txt">Hard</span><b class="dperf-total"><span id="perf-hard-total">0</span></b></div>
+            <div class="track dperf-track"><div class="fill ok" id="perf-hard-ok"></div><div class="fill bad" id="perf-hard-bad"></div></div>
+            <div class="dperf-pct"><span class="ok" id="perf-hard-ok-pct">0% correct</span><span class="bad" id="perf-hard-bad-pct">0% incorrect</span></div>
+          </div>
         </div>
         <div class="dcard dcard-alerts">
           <div class="dcard-head">Alerts</div>
