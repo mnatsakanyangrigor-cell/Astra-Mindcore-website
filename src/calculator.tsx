@@ -135,8 +135,16 @@ export function Calculator() {
   const difficultyRef = useRef<Difficulty>('easy')
   const stageCorrectRef = useRef<StageScores>(emptyScores())
   const stageAttemptedRef = useRef<StageScores>(emptyScores())
+  const inputRef = useRef('')
+  const questionRef = useRef(question)
 
   difficultyRef.current = difficulty
+  questionRef.current = question
+
+  const setInputValue = useCallback((value: string) => {
+    inputRef.current = value
+    setInput(value)
+  }, [])
 
   const clearNextTimer = useCallback(() => {
     if (nextTimer.current !== null) {
@@ -166,10 +174,10 @@ export function Calculator() {
 
   const next = useCallback(() => {
     setQuestion(makeQuestion(difficultyRef.current))
-    setInput('')
+    setInputValue('')
     setFeedback(null)
     triggerQEnter()
-  }, [triggerQEnter])
+  }, [triggerQEnter, setInputValue])
 
   const startStage = useCallback(
     (diff: Difficulty) => {
@@ -177,13 +185,13 @@ export function Calculator() {
       difficultyRef.current = diff
       setDifficulty(diff)
       setQuestion(makeQuestion(diff))
-      setInput('')
+      setInputValue('')
       setFeedback(null)
       setSecondsLeft(STAGE_SECS)
       setPhase('playing')
       triggerQEnter()
     },
-    [clearNextTimer, triggerQEnter],
+    [clearNextTimer, triggerQEnter, setInputValue],
   )
 
   const startRest = useCallback(
@@ -191,22 +199,22 @@ export function Calculator() {
       clearNextTimer()
       difficultyRef.current = nextDiff
       setDifficulty(nextDiff)
-      setInput('')
+      setInputValue('')
       setFeedback(null)
       setSecondsLeft(REST_SECS)
       setPhase('rest')
       triggerQEnter()
     },
-    [clearNextTimer, triggerQEnter],
+    [clearNextTimer, triggerQEnter, setInputValue],
   )
 
   const finishSession = useCallback(() => {
     clearNextTimer()
     setPhase('done')
-    setInput('')
+    setInputValue('')
     setFeedback(null)
     publishPerformance(stageCorrectRef.current, stageAttemptedRef.current, true)
-  }, [clearNextTimer])
+  }, [clearNextTimer, setInputValue])
 
   const beginRunning = useCallback(() => {
     startStage('easy')
@@ -229,7 +237,7 @@ export function Calculator() {
     if (dash) delete dash.dataset.sessionDone
     publishPerformance(emptyScores(), emptyScores(), false)
     setQuestion(makeQuestion('easy'))
-    setInput('')
+    setInputValue('')
     setFeedback(null)
     setSecondsLeft(STAGE_SECS)
     setDifficulty('easy')
@@ -240,7 +248,7 @@ export function Calculator() {
     setPressed(null)
     setQEnter(false)
     connectTimer.current = window.setTimeout(showConnected, CONNECT_MS)
-  }, [clearNextTimer, clearConnectTimer, showConnected])
+  }, [clearNextTimer, clearConnectTimer, showConnected, setInputValue])
 
   const skip = useCallback(() => {
     if (phase === 'rest') {
@@ -324,14 +332,15 @@ export function Calculator() {
       flashKey(label)
 
       if (label === 'CLR') {
-        setInput('')
+        setInputValue('')
         return
       }
 
       if (label === 'ENT') {
-        if (!input) return
+        const value = inputRef.current
+        if (!value) return
         const diff = difficultyRef.current
-        const ok = Number(input) === question.answer
+        const ok = Number(value) === questionRef.current.answer
         stageAttemptedRef.current = {
           ...stageAttemptedRef.current,
           [diff]: stageAttemptedRef.current[diff] + 1,
@@ -348,10 +357,10 @@ export function Calculator() {
         return
       }
 
-      if (input.length >= 7) return
-      setInput((v) => v + label)
+      if (inputRef.current.length >= 7) return
+      setInputValue(inputRef.current + label)
     },
-    [playing, input, question.answer, feedback, flashKey, clearNextTimer, next],
+    [playing, feedback, flashKey, clearNextTimer, next, setInputValue],
   )
 
   useEffect(() => {
