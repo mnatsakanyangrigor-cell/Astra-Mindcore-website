@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ASTRA MINDCORE calculator demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root { --orange:#ff4f00; --green:#4ec98f; --white:#f4f4f5; --muted:#7a7a82; --bg:#0a0a0b; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; width:1280px; height:720px; overflow:hidden; background:var(--bg); }
+    .stage { width:1280px; height:720px; display:flex; align-items:center; justify-content:center; }
+    .mc {
+      position:relative; height:680px; aspect-ratio:631/872;
+      background:url('../public/astra-assets/device-front-cutout.png') center / contain no-repeat;
+      filter:drop-shadow(0 28px 40px rgba(0,0,0,.55));
+    }
+    .mc-screen {
+      position:absolute; top:16%; left:17%; width:66%;
+      display:flex; flex-direction:column; align-items:center; gap:4px; z-index:2;
+    }
+    .mc-top { width:100%; display:flex; align-items:center; justify-content:center; gap:8px; min-height:1.15em; }
+    .mc-timer { color:var(--orange); font-family:"JetBrains Mono",monospace; font-weight:600; font-size:13px; }
+    .mc-bio { display:flex; gap:8px; font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--muted); }
+    .mc-bio b { color:var(--white); font-weight:600; }
+    .mc-q { text-align:center; color:var(--white); font-family:Inter,system-ui,sans-serif; min-height:2.4em; }
+    .mc-q-expr { display:block; font-size:28px; font-weight:600; letter-spacing:.04em; line-height:1.1; }
+    .mc-q-expr.status { font-size:13px; font-weight:500; letter-spacing:.02em; }
+    .mc-display {
+      min-height:1.2em; text-align:center; font-family:"JetBrains Mono",monospace;
+      font-size:26px; color:var(--orange); padding:.05em .4em;
+    }
+    .mc-display.ok { color:var(--green); }
+    .mc-display.bad { color:#ff5577; }
+    .key {
+      position:absolute; border-radius:8px; background:transparent; z-index:3;
+    }
+    .key.on { background:rgba(255,79,0,.45); box-shadow:inset 0 0 0 2px rgba(255,255,255,.35); }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="mc" id="device">
+      <div class="mc-screen">
+        <div class="mc-top" id="topbar" hidden>
+          <span class="mc-timer" id="timer">0:30</span>
+          <span class="mc-bio" id="bio"></span>
+        </div>
+        <div class="mc-q"><span class="mc-q-expr" id="expr">Ready</span></div>
+        <div class="mc-display" id="display" hidden>&nbsp;</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const COLS = [
+      { left: 25.04, width: 15.53 },
+      { left: 42.95, width: 15.37 },
+      { left: 60.7, width: 15.53 },
+    ]
+    const ROWS = [
+      { top: 40.48, height: 7.34 },
+      { top: 49.2, height: 7.45 },
+      { top: 58.14, height: 7.34 },
+      { top: 66.86, height: 7.45 },
+    ]
+    const KEYS = ['1','2','3','4','5','6','7','8','9','CLR','0','ENT']
+    const device = document.getElementById('device')
+    KEYS.forEach((label, i) => {
+      const el = document.createElement('div')
+      el.className = 'key'
+      el.dataset.key = label
+      const col = COLS[i % 3]
+      const row = ROWS[Math.floor(i / 3)]
+      el.style.left = col.left + '%'
+      el.style.top = row.top + '%'
+      el.style.width = col.width + '%'
+      el.style.height = row.height + '%'
+      device.appendChild(el)
+    })
+
+    const expr = document.getElementById('expr')
+    const display = document.getElementById('display')
+    const topBar = document.getElementById('topbar')
+    const timer = document.getElementById('timer')
+    const bio = document.getElementById('bio')
+
+    function pad(s) {
+      const m = Math.floor(s / 60)
+      const sec = s % 60
+      return m + ':' + String(sec).padStart(2, '0')
+    }
+    function setKeys(active) {
+      document.querySelectorAll('.key').forEach((el) => {
+        el.classList.toggle('on', el.dataset.key === active)
+      })
+    }
+    function setBio(show, seed) {
+      topBar.hidden = !show
+      if (!show) return
+      const hr = 68 + (seed % 17)
+      const spo2 = 96 + (seed % 4)
+      const gsr = (2 + (seed % 50) / 10).toFixed(1)
+      bio.innerHTML = 'HR <b>' + hr + '</b>  SpO2 <b>' + spo2 + '</b>  GSR <b>' + gsr + '</b>'
+    }
+    function showQuestion(text, answer, cls, shift) {
+      expr.className = 'mc-q-expr'
+      expr.textContent = text
+      display.hidden = false
+      display.className = 'mc-display' + (cls ? ' ' + cls : '')
+      display.textContent = answer || '\u00a0'
+      display.style.transform = shift ? 'translateX(' + shift + 'px)' : ''
+    }
+    function status(text, countdown) {
+      expr.className = 'mc-q-expr status'
+      expr.textContent = text
+      display.style.transform = ''
+      if (countdown == null) {
+        display.hidden = true
+      } else {
+        display.hidden = false
+        display.className = 'mc-display'
+        display.textContent = String(countdown)
+      }
+    }
+
+    const typed = []
+    function typeQuestion(q, digits, from, step, wrong) {
+      const n = Math.floor((performanceNow - from) / step)
+      const count = Math.max(0, Math.min(digits.length, n))
+      const text = digits.slice(0, count)
+      const pressing = count > 0 && (performanceNow - from) % step < 160 ? digits[count - 1] : null
+      const enteredAt = from + digits.length * step
+      const entered = count >= digits.length && performanceNow >= enteredAt
+      if (entered) {
+        const shakeT = performanceNow - enteredAt
+        let shift = 0
+        if (wrong && shakeT < 450) {
+          const p = shakeT / 450
+          shift = Math.round(Math.sin(p * Math.PI * 4) * 5 * (1 - p))
+        }
+        showQuestion(q, text, wrong ? 'bad' : 'ok', shift)
+        setKeys(shakeT < 160 ? 'ENT' : null)
+      } else {
+        showQuestion(q, text, '', 0)
+        setKeys(pressing)
+      }
+    }
+
+    let performanceNow = 0
+    function renderAt(ms) {
+      performanceNow = ms
+      setKeys(null)
+      if (ms < 500) {
+        setBio(false)
+        status('Ready', null)
+        return
+      }
+      if (ms < 2100) {
+        setBio(false)
+        status('Connecting to smart watch...', null)
+        return
+      }
+      if (ms < 4500) {
+        setBio(true, 3)
+        timer.textContent = '0:30'
+        const left = ms < 2900 ? 3 : ms < 3700 ? 2 : 1
+        status('Connected', left)
+        return
+      }
+      setBio(true, 4 + Math.floor(ms / 2000))
+      if (ms < 6600) {
+        timer.textContent = '0:26'
+        typeQuestion('8 × 7', '56', 4700, 420, false)
+        return
+      }
+      if (ms < 8200) {
+        timer.textContent = '0:22'
+        typeQuestion('9 − 4', '5', 6800, 420, false)
+        return
+      }
+      if (ms < 10400) {
+        timer.textContent = '0:18'
+        typeQuestion('5 + 4', '8', 8400, 420, true)
+        return
+      }
+      if (ms < 11600) {
+        timer.textContent = '0:10'
+        status('Rest · Medium', 10)
+        return
+      }
+      if (ms < 13600) {
+        timer.textContent = '0:16'
+        typeQuestion('24 + 18', '42', 11800, 380, false)
+        return
+      }
+      if (ms < 15600) {
+        timer.textContent = '0:12'
+        typeQuestion('51 − 19', '32', 13800, 380, false)
+        return
+      }
+      if (ms < 16800) {
+        timer.textContent = '0:08'
+        status('Rest · Hard', 8)
+        return
+      }
+      if (ms < 19600) {
+        timer.textContent = '0:06'
+        typeQuestion('128 + 246', '374', 17000, 360, false)
+        return
+      }
+      setBio(true, 9)
+      timer.textContent = '0:00'
+      status('TIME UP', null)
+    }
+    window.renderAt = renderAt
+    renderAt(0)
+  </script>
+</body>
+</html>

@@ -154,13 +154,38 @@
     }),{threshold:.25});
     dashObs.observe(root);
 
-    addEventListener('astra:session-done',()=>{
+    let alertTimers=[];
+    function playReadinessAndAlerts(){
       stopped=true;
-      playedOnce=true;
-      statusEl.classList.remove('waiting');statusEl.classList.add('active');
-      statusEl.innerHTML='<span class="sdot"></span>Active';
+      alertTimers.forEach(id=>clearTimeout(id));
+      alertTimers=[];
+      ring.style.transition='none';
+      ring.style.strokeDashoffset=CIRC;
+      readyPct.textContent='0%';
+      root.querySelectorAll('.dready-bars .fill').forEach(f=>{f.style.transition='none';f.style.width='0%';});
+      root.querySelectorAll('.dready-bars .num').forEach(n=>{n.textContent='0';});
+      alertsEl.innerHTML='';
+      void ring.offsetWidth;
+      ring.style.transition='';
+      root.querySelectorAll('.dready-bars .fill').forEach(f=>{f.style.transition='';});
+      requestAnimationFrame(()=>{
+        ring.style.strokeDashoffset=CIRC*(1-.72);
+        animateRingPct(72,1400);
+        root.querySelectorAll('.dready-bars .fill').forEach(f=>{f.style.width=f.dataset.target+'%';});
+        root.querySelectorAll('.dready-bars .num').forEach(n=>animateNum(n,+n.dataset.target,0,1200));
+      });
+      ALERTS.forEach((item,i)=>{
+        alertTimers.push(setTimeout(()=>addAlert(item[0],item[1]),500+i*1800));
+      });
       aiEl.classList.add('ready');
       aiEl.textContent=AI_TEXT;
+    }
+    window.astraAnimateDashboard=playReadinessAndAlerts;
+
+    addEventListener('astra:session-done',()=>{
+      statusEl.classList.remove('waiting');statusEl.classList.add('active');
+      statusEl.innerHTML='<span class="sdot"></span>Active';
+      playReadinessAndAlerts();
     });
   })();
 

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'CLR', '0', 'ENT'] as const
-const STAGE_SECS = 30
-const REST_SECS = 10
+const present =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('present')
+if (typeof document !== 'undefined') document.body.classList.add('present-frame')
 const CONNECT_MS = 3000
 const CONNECTED_MS = 3000
 
@@ -20,6 +21,16 @@ const DIFF_DIGITS: Record<Difficulty, number> = {
   easy: 1,
   medium: 2,
   hard: 3,
+}
+const STAGE_FOR: Record<Difficulty, number> = {
+  easy: 10,
+  medium: 10,
+  hard: 10,
+}
+const REST_BEFORE: Record<Difficulty, number> = {
+  easy: 0,
+  medium: 5,
+  hard: 5,
 }
 
 const emptyScores = (): StageScores => ({ easy: 0, medium: 0, hard: 0 })
@@ -83,32 +94,50 @@ function mapKeyboardEvent(e: KeyboardEvent): PadKey | null {
   return null
 }
 
-function publishPerformance(correct: StageScores, attempted: StageScores, animate = true) {
+function publishPerformance(
+  correct: StageScores,
+  attempted: StageScores,
+  skipped: StageScores,
+  animate = true,
+) {
   for (const diff of DIFFICULTIES) {
     const ok = correct[diff]
-    const total = attempted[diff]
+    const bad = Math.max(0, attempted[diff] - ok)
+    const skip = skipped[diff]
+    const total = ok + bad + skip
     const okPct = total > 0 ? Math.round((ok / total) * 100) : 0
-    const badPct = total > 0 ? 100 - okPct : 0
+    const badPct = total > 0 ? Math.round((bad / total) * 100) : 0
+    const skipPct = total > 0 ? Math.max(0, 100 - okPct - badPct) : 0
 
     const totalEl = document.getElementById(`perf-${diff}-total`)
     const okBar = document.getElementById(`perf-${diff}-ok`) as HTMLElement | null
     const badBar = document.getElementById(`perf-${diff}-bad`) as HTMLElement | null
+    const skipBar = document.getElementById(`perf-${diff}-skip`) as HTMLElement | null
     const okPctEl = document.getElementById(`perf-${diff}-ok-pct`)
     const badPctEl = document.getElementById(`perf-${diff}-bad-pct`)
+    const skipPctEl = document.getElementById(`perf-${diff}-skip-pct`)
 
     if (totalEl) totalEl.textContent = String(total)
     if (okPctEl) okPctEl.textContent = `${okPct}% correct`
     if (badPctEl) badPctEl.textContent = `${badPct}% incorrect`
+    if (skipPctEl) skipPctEl.textContent = `${skipPct}% skipped`
 
-    if (okBar && badBar) {
+    const bars: { el: HTMLElement; pct: number }[] = []
+    if (okBar) bars.push({ el: okBar, pct: okPct })
+    if (badBar) bars.push({ el: badBar, pct: badPct })
+    if (skipBar) bars.push({ el: skipBar, pct: skipPct })
+    if (bars.length) {
       if (animate) {
-        okBar.style.width = '0%'
-        badBar.style.width = '0%'
-        // Force layout so the width transition runs once.
-        void okBar.offsetWidth
+        for (const bar of bars) bar.el.style.width = '0%'
+        void bars[0]!.el.offsetWidth
       }
-      okBar.style.width = `${okPct}%`
-      badBar.style.width = `${badPct}%`
+      const visible = bars.filter((bar) => bar.pct > 0)
+      for (const bar of bars) {
+        const left = bar.pct > 0 && bar === visible[0]
+        const right = bar.pct > 0 && bar === visible[visible.length - 1]
+        bar.el.style.width = `${bar.pct}%`
+        bar.el.style.borderRadius = `${left ? 4 : 0}px ${right ? 4 : 0}px ${right ? 4 : 0}px ${left ? 4 : 0}px`
+      }
     }
   }
 
@@ -121,7 +150,7 @@ export function Calculator() {
   const [question, setQuestion] = useState(() => makeQuestion('easy'))
   const [input, setInput] = useState('')
   const [feedback, setFeedback] = useState<'ok' | 'bad' | null>(null)
-  const [secondsLeft, setSecondsLeft] = useState(STAGE_SECS)
+  const [secondsLeft, setSecondsLeft] = useState(STAGE_FOR.easy)
   const [phase, setPhase] = useState<Phase>('idle')
   const [difficulty, setDifficulty] = useState<Difficulty>('easy')
   const [connectedLeft, setConnectedLeft] = useState(3)
@@ -135,6 +164,7 @@ export function Calculator() {
   const difficultyRef = useRef<Difficulty>('easy')
   const stageCorrectRef = useRef<StageScores>(emptyScores())
   const stageAttemptedRef = useRef<StageScores>(emptyScores())
+  const stageSkippedRef = useRef<StageScores>(emptyScores())
   const inputRef = useRef('')
   const questionRef = useRef(question)
 
@@ -187,7 +217,7 @@ export function Calculator() {
       setQuestion(makeQuestion(diff))
       setInputValue('')
       setFeedback(null)
-      setSecondsLeft(STAGE_SECS)
+      setSecondsLeft(STAGE_FOR[diff])
       setPhase('playing')
       triggerQEnter()
     },
@@ -201,7 +231,7 @@ export function Calculator() {
       setDifficulty(nextDiff)
       setInputValue('')
       setFeedback(null)
-      setSecondsLeft(REST_SECS)
+      setSecondsLeft(REST_BEFORE[nextDiff])
       setPhase('rest')
       triggerQEnter()
     },
@@ -213,7 +243,12 @@ export function Calculator() {
     setPhase('done')
     setInputValue('')
     setFeedback(null)
-    publishPerformance(stageCorrectRef.current, stageAttemptedRef.current, true)
+    publishPerformance(
+      stageCorrectRef.current,
+      stageAttemptedRef.current,
+      stageSkippedRef.current,
+      true,
+    )
   }, [clearNextTimer, setInputValue])
 
   const beginRunning = useCallback(() => {
@@ -233,13 +268,14 @@ export function Calculator() {
     clearConnectTimer()
     stageCorrectRef.current = emptyScores()
     stageAttemptedRef.current = emptyScores()
+    stageSkippedRef.current = emptyScores()
     const dash = document.getElementById('liveDash')
     if (dash) delete dash.dataset.sessionDone
-    publishPerformance(emptyScores(), emptyScores(), false)
+    publishPerformance(emptyScores(), emptyScores(), emptyScores(), false)
     setQuestion(makeQuestion('easy'))
     setInputValue('')
     setFeedback(null)
-    setSecondsLeft(STAGE_SECS)
+    setSecondsLeft(STAGE_FOR.easy)
     setDifficulty('easy')
     difficultyRef.current = 'easy'
     setPhase('connecting')
@@ -256,6 +292,11 @@ export function Calculator() {
       return
     }
     if (phase !== 'playing' || feedback) return
+    const diff = difficultyRef.current
+    stageSkippedRef.current = {
+      ...stageSkippedRef.current,
+      [diff]: stageSkippedRef.current[diff] + 1,
+    }
     clearNextTimer()
     next()
   }, [phase, difficulty, feedback, clearNextTimer, next, startStage])
@@ -291,12 +332,12 @@ export function Calculator() {
   }, [secondsLeft, phase, difficulty, startRest, startStage, finishSession])
 
   useEffect(() => {
+    if (present) return
     if (phase !== 'done') return
-    const target =
-      document.getElementById('biometrics') ?? document.getElementById('liveDash')
+    const target = document.getElementById('liveDash')
     if (!target) return
     const id = window.setTimeout(() => {
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      target.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }, 100)
     return () => window.clearTimeout(id)
   }, [phase])
@@ -384,7 +425,7 @@ export function Calculator() {
 
   const showTimer = playing || resting || phase === 'connected'
   const showBio = phase === 'connected' || playing || resting
-  const isReady = phase === 'idle'
+  const screenCentered = phase === 'idle' || phase === 'done'
 
   let screenLabel: ReactNode
   if (phase === 'connecting') {
@@ -411,7 +452,7 @@ export function Calculator() {
       className="mc"
       aria-label="ASTRA MINDCORE device, front view showing the mental math assessment screen"
     >
-      <div className="mc-screen">
+      <div className={`mc-screen${screenCentered ? ' mc-screen-center' : ''}`}>
         {(showTimer || showBio) && (
           <div className="mc-top">
             <div className="mc-stats" aria-live="polite">
@@ -452,15 +493,13 @@ export function Calculator() {
             {screenLabel}
           </span>
         </div>
-        {!isReady && phase !== 'connecting' && (
+        {(phase === 'connected' || phase === 'rest' || phase === 'playing') && (
           <div className={displayClass} aria-live="polite">
             {phase === 'connected'
               ? connectedLeft
               : resting
                 ? secondsLeft
-                : playing
-                  ? input || '\u00a0'
-                  : '\u00a0'}
+                : input || '\u00a0'}
           </div>
         )}
       </div>
@@ -499,12 +538,12 @@ export function Calculator() {
           <defs>
             <path
               id="mc-reset-curve"
-              d="M 90 6 C 116 32 124 68 112 98 C 96 128 48 148 -12 140"
+              d="M -12 140 C 48 148 96 128 112 98 C 124 68 116 32 90 6"
               fill="none"
             />
           </defs>
-          <text className="mc-start-text">
-            <textPath href="#mc-reset-curve" startOffset="0%">
+          <text className="mc-start-text" textAnchor="end">
+            <textPath href="#mc-reset-curve" startOffset="100%">
               SKIP
             </textPath>
           </text>
